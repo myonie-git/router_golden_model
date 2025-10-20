@@ -1,0 +1,49 @@
+{
+  "height": 1,
+  "width": 2,
+  "cores": [
+    {
+      "y": 0,
+      "x": 0,
+      "config": {
+        "init_mem_path": "Tianjic/design/RTL/CoreMemory/core_XX_XX/inputs/inputs.txt",
+        "prim_queue": [
+          { "kind": "send", "send": {
+              "cell_or_neuron": 0,
+              "message_num": 1,
+              "send_addr": 4096,
+              "para_addr": 4352,
+              "messages": [
+                {
+                  "s": 0, "t": 1, "e": 0, "q": 0,
+                  "y": 0, "x": 1,
+                  "a0": 0,
+                  "cnt": 1,
+                  "a_offset": 0,
+                  "const_raw": 0,
+                  "handshake": false,
+                  "tag_id": 0,
+                  "en": true,
+                  "sparse": false
+                }
+              ]
+          }}
+        ]
+      }
+    },
+    {
+      "y": 0,
+      "x": 1,
+      "config": {
+        "init_mem_path": "Tianjic/design/RTL/CoreMemory/core_XX_XX/inputs/inputs.txt",
+        "prim_queue": [
+          { "kind": "recv", "recv": { "recv_addr": 4096, "tag_id": 0 } }
+        ]
+      }
+    }
+  ]
+}
+
+
+
+
