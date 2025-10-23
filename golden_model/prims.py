@@ -116,7 +116,7 @@ def encode_prim_cell(op: "PrimOp") -> bytes:
     # STOP special-case
     if op.kind == "stop":
         pic[8:0] = PRIM_KIND_STOP  # 0x3
-        return int(pic).to_bytes(32, byteorder='little')
+        return int(pic).to_bytes(32, byteorder='big')
 
     # Unified encoding with flags at bit[4] (send) and bit[5] (recv)
     if op.send is not None:
@@ -171,11 +171,13 @@ def decode_prim_cell(cell_bytes: bytes) -> Optional["PrimOp"]:
     recv_prim = None
     
     if send_valid:
-        cell_or_neuron = int(pic[48])
+        deps = int(pic[16:8])
         send_addr = int(pic[64:48])
-        message_num = int(pic[80:64])
-        para_addr = int(pic[96:80])
+        cell_or_neuron = int(pic[168])
+        message_num = int(pic[184:176])
+        para_addr = int(pic[256:240])
         send_prim = SendPrim(
+            deps = deps,
             cell_or_neuron=cell_or_neuron, 
             message_num=message_num, 
             send_addr=send_addr, 
@@ -183,17 +185,19 @@ def decode_prim_cell(cell_bytes: bytes) -> Optional["PrimOp"]:
         )
     
     if recv_valid:
-        recv_addr = int(pic[112:96])
-        tag_id = int(pic[120:112])
-        end_num = int(pic[128:120])
-        relay_mode = int(pic[136:128])
-        mc_y = int(pic[144:136])
-        mc_x = int(pic[152:144])
+        deps = int(pic[16:8])
+        recv_addr = int(pic[48:32])
+        CXY = int(pic[174:172])
+        mc_x = int(pic[198:192])
+        mc_y = int(pic[190:184])
+        tag_id = int(pic[208:200])
+        end_num = int(pic[216:208])
         recv_prim = RecvPrim(
+            deps = deps,
             recv_addr=recv_addr,
             tag_id=tag_id,
-            end_num=(end_num if end_num != 0 else None),
-            relay_mode=relay_mode,
+            end_num=end_num,
+            relay_mode=CXY,
             mc_y=mc_y,
             mc_x=mc_x,
         )

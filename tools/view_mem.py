@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """
-快速查看内存文件中指定地址的值
 用法: 
   python3 view_mem.py <文件路径> <地址>
   python3 view_mem.py out_mem/core_0_0.txt 0

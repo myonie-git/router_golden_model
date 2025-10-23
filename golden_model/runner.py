@@ -64,7 +64,7 @@ def main():
         seeded_dir = Path(args.emit_seeded_dir)
         seeded_dir.mkdir(parents=True, exist_ok=True)
         for (y, x), node in sim_seed.cores.items():
-            out_path = seeded_dir / f"core_{y}_{x}.txt"
+            out_path = seeded_dir / f"{y}_{x}_mem_config.txt"
             node.mem.dump_to_file(str(out_path))
         print(f"Seeded memories written to {seeded_dir}")
     if args.seed_only:
@@ -76,7 +76,7 @@ def main():
         cores_cfg_run: Dict[Tuple[int, int], CoreConfig] = {}
         for y in range(h):
             for x in range(w):
-                seeded_path = str(Path(args.emit_seeded_dir) / f"core_{y}_{x}.txt")
+                seeded_path = str(Path(args.emit_seeded_dir) / f"{y}_{x}_mem_config.txt")
                 cores_cfg_run[(y, x)] = CoreConfig(init_mem_path=seeded_path, prim_queue=[])  # skip seeding; parse from memory
         sim_run = NoCSimulator((h, w), cores_cfg_run)
         sim_run.run()
@@ -89,14 +89,10 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for (y, x), node in final_sim.cores.items():
-        out_path = out_dir / f"core_{y}_{x}.txt"
+        out_path = out_dir / f"{y}_{x}_mem_config.txt"
         node.mem.dump_to_file(str(out_path))
     print(f"Wrote memories to {out_dir}")
 
 
 if __name__ == "__main__":
     main()
-
-
-
-
