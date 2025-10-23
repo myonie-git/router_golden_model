@@ -19,7 +19,7 @@
 - `core.py`：`CoreNode`、`NoCSimulator`，轮询执行 prim 队列，含握手缓冲逻辑。
 - `simulator.py`：顶层封装 `run_simulation`。
 - `runner.py`：命令行入口（读取 JSON，运行并导出结果）。
-- `examples/sample_config.json`：示例配置。
+- `config/sample_config.json`：示例配置。
 
 ## 配置（JSON）
 顶层：
@@ -57,7 +57,7 @@ Recv 原语：
 - `tag_id`：本次接收的标签
 - 其余字段（`end_num/relay_mode/mc_x/mc_y`）占位，当前忽略
 
-### A_offset/Const 规则（要点）
+### A_offset/Const 规则
 - 连续发送时，A 每个包自增 1。
 - 每完成一组（组大小=`const_raw+1`，0 视作 1）后，对“下一包”额外执行 `A += (a_offset - 1)`。
   - 例：`const_raw=0, a_offset=1` → 紧凑写入（连续）。
@@ -65,7 +65,7 @@ Recv 原语：
 
 ## 运行
 ```bash
-python -m golden_model.runner golden_model/examples/sample_config.json --out_dir out_mem
+python -m golden_model.runner config/sample_config.json --out_dir out_mem
 ```
 - 输出：`out_mem/core_Y_X.txt`（`@addr HEX`，全量 dump）。
 - 若使用相对路径，请以仓库根为工作目录运行。

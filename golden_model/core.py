@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 from .memory import CoreMemory, iter_cells_span_from_A_8B, iter_cells_span_from_A_1B
-from .prims import SendPrim, RecvPrim, CoreConfig, PrimOp
+from .prims import SendPrim, RecvPrim, CoreConfig, PrimOp, encode_prim_cell, decode_prim_cell
 from .router_table import parse_router_table_from_memory, RouterTableEntry, encode_packet_from_fields, write_router_table_to_memory
 
 
@@ -48,11 +48,15 @@ class NoCSimulator:
                     y=y,
                     x=x,
                     mem=CoreMemory(),
-                    prim_queue=list(cfg.prim_queue) if cfg.prim_queue else self._fold_queues(cfg),
+                    prim_queue=[],
                     pending_by_tag={},
                 )
                 node.load_init_if_any(cfg.init_mem_path)
+                # Register node first so seeding helpers can access it via self.cores
                 self.cores[(y, x)] = node
+                # Seed config-provided prims/messages into memory, then parse prim queue from memory
+                self._seed_config_into_memory((y, x), cfg)
+                node.prim_queue = self._parse_prims_from_memory(node.mem)
 
     # -------------------------- Helpers --------------------------
     def _wrap_coord(self, y: int, x: int) -> Tuple[int, int]:
@@ -60,28 +64,85 @@ class NoCSimulator:
 
     def _find_recv_acceptor(self, dst: Tuple[int, int], tag: int) -> bool:
         core = self.cores[dst]
-        for r in core.recv_queue:
-            if r.tag_id == tag:
+        for op in core.prim_queue:
+            if op.recv is not None and op.recv.tag_id == tag:
                 return True
         return False
 
+    # -------------------------- Prim IO in memory --------------------------
+    def _seed_config_into_memory(self, coord: Tuple[int, int], cfg: CoreConfig) -> None:
+        node = self.cores[coord]
+        # 1) Write configured prims into memory.
+        #    If mem_addr is specified, honor it. Otherwise place sequentially from 0.
+        occupied = set()
+        for addr, buf in node.mem._cells.items():
+            # consider non-zero cells as occupied
+            if any(b != 0 for b in buf):
+                occupied.add(addr)
+
+        # first pass: explicit addresses
+        for op in (cfg.prim_queue or []):
+            if op.mem_addr is not None:
+                cell_bytes = encode_prim_cell(op)
+                node.mem._cells[op.mem_addr] = bytearray(cell_bytes)
+                occupied.add(op.mem_addr)
+
+        # second pass: assign addresses for remaining ops sequentially from 0
+        next_addr = 0
+        for op in (cfg.prim_queue or []):
+            if op.mem_addr is None:
+                while next_addr in occupied and next_addr < node.mem.num_cells:
+                    next_addr += 1
+                if next_addr >= node.mem.num_cells:
+                    break
+                cell_bytes = encode_prim_cell(op)
+                node.mem._cells[next_addr] = bytearray(cell_bytes)
+                occupied.add(next_addr)
+                next_addr += 1
+        # 2) For ops with inline send messages, write router table packets into memory at para_addr
+        for op in (cfg.prim_queue or []):
+            if op.send is not None and op.send.messages:
+                packets = [encode_packet_from_fields(m) for m in op.send.messages]
+                write_router_table_to_memory(node.mem, op.send.para_addr, packets)
+
+    def _parse_prims_from_memory(self, mem: CoreMemory) -> List[PrimOp]:
+        prims: List[PrimOp] = []
+        addr = 0
+        while addr < mem.num_cells:
+            cell = mem.read_cell(addr)
+            op = decode_prim_cell(cell)
+            if op is None:
+                break
+            prims.append(op)
+            addr += 1
+        return prims
+
     # -------------------------- Simulation --------------------------
     def run(self) -> None:
-        """Execute all cores' prim_queue in round-robin order until all empty."""
+        """Execute all cores' prim_queue in round-robin order until all empty or stopped."""
         indices = {k: 0 for k in self.cores.keys()}
+        stopped = {k: False for k in self.cores.keys()}  # Track stopped cores
         remaining = sum(len(n.prim_queue) for n in self.cores.values())
         while remaining > 0:
             progressed = False
             for coord, node in self.cores.items():
+                if stopped[coord]:
+                    # Skip cores that have encountered a stop primitive
+                    continue
                 idx = indices[coord]
                 if idx >= len(node.prim_queue):
                     continue
                 op = node.prim_queue[idx]
-                if op.kind == "recv":
-                    self._execute_recv(coord, op.recv)
-                elif op.kind == "send":
-                    self._prepare_router_msgs_if_needed(coord, op.send)
-                    self._execute_send(coord, op.send)
+                if op.kind == "stop":
+                    # Mark this core as stopped, no further primitives will be executed
+                    stopped[coord] = True
+                else:
+                    # Execute recv first (to post acceptors), then send
+                    if op.recv is not None:
+                        self._execute_recv(coord, op.recv)
+                    if op.send is not None:
+                        self._prepare_router_msgs_if_needed(coord, op.send)
+                        self._execute_send(coord, op.send)
                 indices[coord] += 1
                 remaining -= 1
                 progressed = True
@@ -253,13 +314,7 @@ def dst_core_offset_cell(dst_core: CoreNode, sp: SendPrim, rte: RouterTableEntry
     # we choose the first
     recv_base = 0
     for op in dst_core.prim_queue:
-        if op.kind == "recv" and op.recv.tag_id == rte.tag_id:
+        if op.recv is not None and op.recv.tag_id == rte.tag_id:
             recv_base = op.recv.recv_addr
             break
     return recv_base + cell_delta
-
-    
-    
-    
-
-

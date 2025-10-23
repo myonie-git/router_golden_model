@@ -3,9 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterable, Tuple
 
-
 MEM_CELL_BYTES = 32  # 256-bit wide
-
 
 def _hex_to_bytes_32B(hex_str: str) -> bytes:
     s = "".join(hex_str.strip().split())
@@ -15,7 +13,6 @@ def _hex_to_bytes_32B(hex_str: str) -> bytes:
     elif len(s) > MEM_CELL_BYTES * 2:
         s = s[-MEM_CELL_BYTES * 2 :]
     return bytes.fromhex(s)
-
 
 @dataclass
 class CoreMemory:
@@ -33,7 +30,7 @@ class CoreMemory:
         self._cells: Dict[int, bytearray] = {}
 
     # -------------------------- Load/Store --------------------------
-    def load_from_inputs_file(self, path: str) -> None:
+    def load_from_inputs_file(self, path: str) -> None: 
         """
         Parse lines like: '@0000 <64-hex>' and fill memory cells.
         Extra whitespace after hex is ignored. Lines not starting with '@' are ignored.

@@ -25,13 +25,13 @@
 - `golden_model/core.py`：`CoreNode`、`NoCSimulator`；轮询执行 per-core `prim_queue`；含握手缓冲。
 - `golden_model/simulator.py`：顶层 `run_simulation` 封装。
 - `golden_model/runner.py`：命令行入口，读取 JSON，运行并导出各核最终内存。
-- `golden_model/examples/sample_config.json`：最小示例配置。
+- `config/sample_config.json`：最小示例配置。
 
 ## 使用方法
 - 依赖：Python 3.9+。
 - 运行：
   ```bash
-  python -m golden_model.runner golden_model/examples/sample_config.json --out_dir out_mem
+  python -m golden_model.runner config/sample_config.json --out_dir out_mem
   ```
 - 输出：`out_mem/core_Y_X.txt`（`@addr HEX`，每行 32B，完整 dump）。
 
