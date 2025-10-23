@@ -156,7 +156,7 @@ class NoCSimulator:
 
     def _execute_send(self, src: Tuple[int, int], sp: SendPrim) -> None:
         src_core = self.cores[src]
-        msg_num = sp.normalized_message_num()
+        msg_num = sp.message_num
         # Parse router table from source memory
         rtes = parse_router_table_from_memory(src_core.mem, sp.para_addr, msg_num)
         # Precompute per-message counts (normalize 0->1)

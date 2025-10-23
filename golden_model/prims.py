@@ -3,6 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Literal, Union
 
+from myhdl import bin, intbv
+
+def to_signed_bits(val, width=16):
+    if not -(1 << (width-1)) <= val < (1 << (width-1)):
+        raise ValueError("超出范围: %d位有符号数" % width)
+    return val & ((1 << width) - 1)
+
+def to_unsigned_bits(val, width=16):
+    if not 0 <= val < (1 << width):
+        raise ValueError("超出范围: %d位无符号数" % width)
+    return val & ((1 << width) - 1) 
 
 @dataclass
 class SendPrim:
@@ -19,15 +30,13 @@ class SendPrim:
                    into memory at para_addr (two per cell) before execution.
     """
 
-    cell_or_neuron: int  # 0=cell, 1=neuron
+    deps: int = 0
+    cell_or_neuron: int = 0 # 0=cell, 1=neuron
     neuron_type: int = 0
-    message_num: int = 1
+    message_num: int = 0
     send_addr: int = 0
     para_addr: int = 0
     messages: Optional[List[dict]] = None
-
-    def normalized_message_num(self) -> int:
-        return 1 if self.message_num == 0 else self.message_num
 
 
 @dataclass
@@ -40,10 +49,12 @@ class RecvPrim:
     - relay_mode / mc_x / mc_y: ignored at high level here
     """
 
-    recv_addr: int
-    tag_id: int
-    end_num: Optional[int] = None
+    deps: int = 0
+    recv_addr: int = 0
+    tag_id: int = 0
+    end_num: int = 0
     relay_mode: int = 0
+    CXY: int = 0
     mc_y: int = 0
     mc_x: int = 0
 
@@ -70,30 +81,28 @@ class PrimOp:
 
 
 # -------------------------- Prim encoding in memory --------------------------
-# One primitive per 32B cell starting at address 0x0.
+# One primitive per 32B cell (256 bits) starting at address 0x0.
 # All-zero cell (or uninitialized) marks end of prim queue.
 # Unified Layout (supports send and recv in the same primitive):
+# Using bit-level encoding with intbv:
 #   FLAGS:
-#     [4]     : send_valid flag (1=enabled, 0=disabled)
-#     [5]     : recv_valid flag (1=enabled, 0=disabled)
-#   SEND (present if [4] == 1):
-#     [6]     : cell_or_neuron (0=cell, 1=neuron)
-#     [7:9]   : message_num (u16, big-endian; 0 treated as 1)
-#     [9:11]  : send_addr   (u16, big-endian; 32B addressing)
-#     [11:13] : para_addr   (u16, big-endian; 32B addressing)
-#   RECV (present if [5] == 1):
-#     [13]    : tag_id (u8)
-#     [14:16] : recv_addr (u16, big-endian; 32B addressing)
-#     [16]    : end_num (u8, optional; 0 if unused)
-#     [17]    : relay_mode (u8)
-#     [18]    : mc_y (u8)
-#     [19]    : mc_x (u8)
-#   RESERVED:
-#     [0:4], [20:32] reserved (0)
+#     bit[4]     : send_valid flag (1=enabled, 0=disabled)
+#     bit[5]     : recv_valid flag (1=enabled, 0=disabled)
+#   SEND (present if bit[4] == 1):
+#     bit[48]         : cell_or_neuron (0=cell, 1=neuron)
+#     bit[64:48]      : send_addr (u16, 32B addressing)
+#     bit[80:64]      : message_num (u16; 0 treated as 1)
+#     bit[96:80]      : para_addr (u16, 32B addressing)
+#   RECV (present if bit[5] == 1):
+#     bit[112:96]     : recv_addr (u16, 32B addressing)
+#     bit[120:112]    : tag_id (u8)
+#     bit[128:120]    : end_num (u8, optional; 0 if unused)
+#     bit[136:128]    : relay_mode (u8)
+#     bit[144:136]    : mc_y (u8)
+#     bit[152:144]    : mc_x (u8)
 #   STOP (special encoding):
-#     [0]     : 0x0
-#     [1]     : 0x3
-#     [2:32]  : reserved (0)
+#     bit[8:0]   : 0x03 (PRIM_KIND_STOP)
+#     bit[256:8] : reserved (0)
 
 PRIM_KIND_SEND = 1
 PRIM_KIND_RECV = 2
@@ -101,46 +110,58 @@ PRIM_KIND_STOP = 3
 
 
 def encode_prim_cell(op: "PrimOp") -> bytes:
-    buf = bytearray(32)
+    """使用位级别编码原语，返回32字节"""
+    pic = intbv(0, min=0, max=(1<<256))
+    
     # STOP special-case
     if op.kind == "stop":
-        buf[0] = 0x0
-        buf[1] = PRIM_KIND_STOP  # 0x3
-        return bytes(buf)
+        pic[8:0] = PRIM_KIND_STOP  # 0x3
+        return int(pic).to_bytes(32, byteorder='little')
 
-    # Unified encoding with flags at [4] (send) and [5] (recv)
+    # Unified encoding with flags at bit[4] (send) and bit[5] (recv)
     if op.send is not None:
-        buf[4] = 0x1
-        buf[6] = op.send.cell_or_neuron & 0xFF
-        msgn = op.send.normalized_message_num()
-        buf[7:9] = int(msgn & 0xFFFF).to_bytes(2, byteorder="big", signed=False)
-        buf[9:11] = int(op.send.send_addr & 0xFFFF).to_bytes(2, byteorder="big", signed=False)
-        buf[11:13] = int(op.send.para_addr & 0xFFFF).to_bytes(2, byteorder="big", signed=False)
+        pic[4:0] = 0x6
+        pic[4] = 1  # send_valid flag
+        pic[16:8] = to_unsigned_bits(op.send.deps)
+        pic[64:48] = to_unsigned_bits(op.send.send_addr, 16)
+        pic[168] = to_unsigned_bits(op.send.cell_or_neuron, 1)
+        pic[184:176] = to_unsigned_bits(op.send.message_num, 8)
+        pic[256:240] = to_unsigned_bits(op.send.para_addr, 16)
+
     if op.recv is not None:
-        buf[5] = 0x1
-        buf[13] = op.recv.tag_id & 0xFF
-        buf[14:16] = int(op.recv.recv_addr & 0xFFFF).to_bytes(2, byteorder="big", signed=False)
-        # Optional fields encoded for completeness
-        buf[16] = (op.recv.end_num or 0) & 0xFF
-        buf[17] = op.recv.relay_mode & 0xFF
-        buf[18] = op.recv.mc_y & 0xFF
-        buf[19] = op.recv.mc_x & 0xFF
+        pic[4:0] = 0x6
+        pic[5] = 1  # recv_valid flag
+        pic[16:8] = to_unsigned_bits(op.recv.deps)
+        pic[48:32] = to_unsigned_bits(op.recv.recv_addr, 16)
+        pic[174:172] = to_unsigned_bits(op.recv.CXY, 2)
+        pic[198:192] = to_signed_bits(op.recv.mc_x, 6)
+        pic[190:184] = to_signed_bits(op.recv.mc_y, 6)
+        pic[208:200] = to_unsigned_bits(op.recv.tag_id, 8)
+        pic[216:208] = to_unsigned_bits(op.recv.end_num, 8)
 
     # If neither flag is set, returns zeroed cell (terminator)
-    return bytes(buf)
+    return int(pic).to_bytes(32, byteorder='big')
 
 
 def decode_prim_cell(cell_bytes: bytes) -> Optional["PrimOp"]:
+    """使用位级别解码原语，从32字节解析"""
     if len(cell_bytes) != 32:
         raise ValueError("prim cell must be 32 bytes")
-    if all(b == 0 for b in cell_bytes):
+    
+    # 将字节转换为 intbv
+    pic = intbv(int.from_bytes(cell_bytes, byteorder='big'), min=0, max=(1<<256))
+    
+    # 检查是否全零
+    if int(pic) == 0:
         return None
-    # STOP special-case: [0]=0x0, [1]=0x3
-    if cell_bytes[0] == 0x0 and cell_bytes[1] == PRIM_KIND_STOP:
+    
+    # STOP special-case: bit[8:0] == 0x3
+    if int(pic[8:0]) == PRIM_KIND_STOP:
         return PrimOp(kind="stop", stop=StopPrim())
 
-    send_valid = (cell_bytes[4] != 0)
-    recv_valid = (cell_bytes[5] != 0)
+    # 检查标志位
+    send_valid = bool(pic[4])
+    recv_valid = bool(pic[5])
 
     if not send_valid and not recv_valid:
         # Unknown/incomplete -> treat as terminator
@@ -148,19 +169,26 @@ def decode_prim_cell(cell_bytes: bytes) -> Optional["PrimOp"]:
 
     send_prim = None
     recv_prim = None
+    
     if send_valid:
-        cell_or_neuron = cell_bytes[6]
-        message_num = int.from_bytes(cell_bytes[7:9], byteorder="big", signed=False)
-        send_addr = int.from_bytes(cell_bytes[9:11], byteorder="big", signed=False)
-        para_addr = int.from_bytes(cell_bytes[11:13], byteorder="big", signed=False)
-        send_prim = SendPrim(cell_or_neuron=cell_or_neuron, message_num=message_num, send_addr=send_addr, para_addr=para_addr)
+        cell_or_neuron = int(pic[48])
+        send_addr = int(pic[64:48])
+        message_num = int(pic[80:64])
+        para_addr = int(pic[96:80])
+        send_prim = SendPrim(
+            cell_or_neuron=cell_or_neuron, 
+            message_num=message_num, 
+            send_addr=send_addr, 
+            para_addr=para_addr
+        )
+    
     if recv_valid:
-        tag_id = cell_bytes[13]
-        recv_addr = int.from_bytes(cell_bytes[14:16], byteorder="big", signed=False)
-        end_num = cell_bytes[16]
-        relay_mode = cell_bytes[17]
-        mc_y = cell_bytes[18]
-        mc_x = cell_bytes[19]
+        recv_addr = int(pic[112:96])
+        tag_id = int(pic[120:112])
+        end_num = int(pic[128:120])
+        relay_mode = int(pic[136:128])
+        mc_y = int(pic[144:136])
+        mc_x = int(pic[152:144])
         recv_prim = RecvPrim(
             recv_addr=recv_addr,
             tag_id=tag_id,
@@ -191,7 +219,3 @@ class CoreConfig:
             self.send_queue = []
         if self.recv_queue is None:
             self.recv_queue = []
-
-
-
-
