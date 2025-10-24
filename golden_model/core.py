@@ -148,6 +148,7 @@ class NoCSimulator:
                 progressed = True
             if not progressed:
                 break
+    
 
     def _prepare_router_msgs_if_needed(self, src: Tuple[int, int], sp: SendPrim) -> None:
         if sp.messages:
@@ -159,8 +160,7 @@ class NoCSimulator:
         msg_num = sp.message_num
         # Parse router table from source memory
         rtes = parse_router_table_from_memory(src_core.mem, sp.para_addr, msg_num)
-        # Precompute per-message counts (normalize 0->1)
-        msg_counts = [(r.cnt if r.cnt != 0 else 1) for r in rtes]
+        msg_counts = [r.cnt for r in rtes]
         # Process each message
         for msg_idx, rte in enumerate(rtes):
             if not rte.en:
@@ -186,7 +186,7 @@ class NoCSimulator:
             dst_core.pending_by_tag[tag] = []
         if sp.cell_or_neuron == 0:
             # Flatten this message's cells into 4x8B segments in final packet order
-            cell_per_message = rte.cnt if rte.cnt != 0 else 1
+            cell_per_message = rte.cnt
             data = bytearray()
             src_cell_base = sp.send_addr + sum(msg_counts[:msg_idx])
             for i in range(cell_per_message):
@@ -210,9 +210,11 @@ class NoCSimulator:
 
     # -------------------------- Send modes --------------------------
     def _send_cell_mode(self, src_core: CoreNode, dst_coord: Tuple[int, int], sp: SendPrim, rte: RouterTableEntry, msg_idx: int, msg_counts: List[int]) -> None:
+        #TODO: need to review 
+
         dst_core = self.cores[dst_coord]
-        # Number of cells for this message (0 meaning 1)
-        cell_per_message = rte.cnt if rte.cnt != 0 else 1
+        # Number of cells for this message 
+        cell_per_message = rte.cnt
         group_size = rte.group_size
         a = rte.a0  # 8B addressing for cell mode
         # Starting src cell index for this message
@@ -237,7 +239,7 @@ class NoCSimulator:
 
     def _send_neuron_mode(self, src_core: CoreNode, dst_coord: Tuple[int, int], sp: SendPrim, rte: RouterTableEntry, msg_idx: int, msg_counts: List[int]) -> None:
         dst_core = self.cores[dst_coord]
-        neuron_per_message = rte.cnt if rte.cnt != 0 else 1
+        neuron_per_message = rte.cnt
         group_size = rte.group_size
         a = rte.a0  # 1B addressing in neuron mode
         # Neuron stream starts at send_addr cell boundary for first message, then continues across messages

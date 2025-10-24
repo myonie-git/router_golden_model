@@ -1,2 +1,2 @@
-# python3 golden_model/runner.py --config config/sample_config_with_stop.json --emit_seeded_dir seeded_mem  --out_dir out_mem
-python3 golden_model/runner.py --config config/sample_config_with_stop.json  --out_dir out_mem
+python3 golden_model/runner.py --config config/aoffset_const.json --emit_seeded_dir seeded_mem  --out_dir out_mem
+# python3 golden_model/runner.py --config config/sample_config_with_stop.json  --out_dir out_mem

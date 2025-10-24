@@ -23,7 +23,7 @@ class SendPrim:
     - cell_or_neuron: 0 -> SendCell (8B packets aggregated per 32B cell);
                       1 -> SendNeuron (1B packets)
     - neuron_type: reserved (always 0 for 8-bit in this golden model)
-    - message_num: number of messages in router table (0 -> 1)
+    - message_num: number of messages in router table (stored as N-1 in memory)
     - send_addr:   16-bit cell address aligned (32B addressing)
     - para_addr:   base address for router table entries (32B addressing)
     - messages:    Optional manual message specs; if provided, runner writes them
@@ -91,7 +91,7 @@ class PrimOp:
 #   SEND (present if bit[4] == 1):
 #     bit[48]         : cell_or_neuron (0=cell, 1=neuron)
 #     bit[64:48]      : send_addr (u16, 32B addressing)
-#     bit[80:64]      : message_num (u16; 0 treated as 1)
+#     bit[80:64]      : message_num_minus1 (stored as N-1)
 #     bit[96:80]      : para_addr (u16, 32B addressing)
 #   RECV (present if bit[5] == 1):
 #     bit[112:96]     : recv_addr (u16, 32B addressing)
@@ -115,7 +115,8 @@ def encode_prim_cell(op: "PrimOp") -> bytes:
     
     # STOP special-case
     if op.kind == "stop":
-        pic[8:0] = PRIM_KIND_STOP  # 0x3
+        pic[4:0] = 0
+        pic[8:4] = 3
         return int(pic).to_bytes(32, byteorder='big')
 
     # Unified encoding with flags at bit[4] (send) and bit[5] (recv)
@@ -125,7 +126,8 @@ def encode_prim_cell(op: "PrimOp") -> bytes:
         pic[16:8] = to_unsigned_bits(op.send.deps)
         pic[64:48] = to_unsigned_bits(op.send.send_addr, 16)
         pic[168] = to_unsigned_bits(op.send.cell_or_neuron, 1)
-        pic[184:176] = to_unsigned_bits(op.send.message_num, 8)
+        # message_num uses minus-one storage (N-1). Accept 0 as 0 (meaning 1 after decode)
+        pic[184:176] = to_unsigned_bits(max(0, op.send.message_num - 1), 8)
         pic[256:240] = to_unsigned_bits(op.send.para_addr, 16)
 
     if op.recv is not None:
@@ -174,7 +176,8 @@ def decode_prim_cell(cell_bytes: bytes) -> Optional["PrimOp"]:
         deps = int(pic[16:8])
         send_addr = int(pic[64:48])
         cell_or_neuron = int(pic[168])
-        message_num = int(pic[184:176])
+        # Decode minus-one storage back to actual N
+        message_num = int(pic[184:176]) + 1
         para_addr = int(pic[256:240])
         send_prim = SendPrim(
             deps = deps,

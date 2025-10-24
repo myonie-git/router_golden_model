@@ -41,16 +41,6 @@ Send 原语：
 - `send_addr`: 源 32B 起始地址。
 - `para_addr`: 路由表基地址（每 32B 两条 message）。
 - `messages`: 可选，直接在 JSON 中填写每条 128b message 的字段，runner 会在执行前写入 `para_addr`：
-  - `s,t,e,q`：保留/忽略
-  - `y,x`：有符号 6b（相对坐标偏移）
-  - `a0`：14b 起始 A（Cell:8B单位；Neuron:1B单位）
-  - `cnt`：12b 数量（0 视作 1）
-  - `a_offset`：12b 有符号，单位同 A
-  - `const_raw`：7b，组大小=`const_raw+1`（0 视作 1）
-  - `handshake`：bool，需要目的核先挂 `Recv(tag)`
-  - `tag_id`：8b 标签
-  - `en`：是否使能
-  - `sparse`：占位，当前忽略
 
 Recv 原语：
 - `recv_addr`：目的 32B 起始地址

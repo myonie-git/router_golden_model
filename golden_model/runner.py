@@ -1,3 +1,10 @@
+#TODO：Send & Recv的Msg_Num配置需要修复
+#TODO: 缓冲机制的触发是有误的，需要修改
+#TODO: 需要添加多播机制
+#TODO: 需要添加对Normal和Single Mode的支持
+#TODO: _buffer_send_payload的处理并没有考虑A0,Const
+#TODO: 添加对End_Num的支持
+
 from __future__ import annotations
 
 import sys
@@ -7,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import argparse
 import json
+import warnings
 from typing import Dict, Tuple
 
 from golden_model.memory import CoreMemory
@@ -15,7 +23,8 @@ from golden_model.simulator import ArrayConfig, run_simulation
 from golden_model.core import NoCSimulator
 
 
-def load_core_config(obj: dict) -> CoreConfig:
+def load_core_config(obj: dict, warn_deprecated: bool = False) -> CoreConfig:
+
     # Preferred unified queue
     if "prim_queue" in obj:
         q = []
@@ -29,15 +38,79 @@ def load_core_config(obj: dict) -> CoreConfig:
             # Combined support: allow both 'send' and 'recv' fields in one entry
             send_obj = it.get("send")
             recv_obj = it.get("recv")
-            send = SendPrim(**send_obj) if isinstance(send_obj, dict) else None
+            if isinstance(send_obj, dict):
+                s = dict(send_obj)
+                msgs = s.get("messages")
+                if isinstance(msgs, list):
+                    new_msgs = []
+                    for m in msgs:
+                        if isinstance(m, dict):
+                            m2 = dict(m)
+                            if  ("cnt" in m2):
+                                try:
+                                    m2["cnt"] = int(m2["cnt"]) + 1 
+                                except Exception:
+                                    pass
+                            new_msgs.append(m2)
+                    s["messages"] = new_msgs
+                    s["message_num"] = len(new_msgs)
+                else:
+                    if ("message_num" in s):
+                        try:
+                            s["message_num"] = int(s["message_num"]) + 1
+                        except Exception:
+                            pass
+                send = SendPrim(**s)
+            else:
+                send = None
             recv = RecvPrim(**recv_obj) if isinstance(recv_obj, dict) else None
             if send is None and recv is None:
                 raise ValueError("prim_queue entry must specify 'send', 'recv', or 'stop'")
             entry_kind = "send" if send is not None else "recv"
             q.append(PrimOp(kind=entry_kind, send=send, recv=recv, mem_addr=mem_addr))
         return CoreConfig(init_mem_path=obj.get("init_mem_path"), prim_queue=q)
-    # Back-compat
-    sends = [SendPrim(**s) for s in obj.get("send_queue", [])]
+        
+    if ("send_queue" in obj or "recv_queue" in obj):
+        if "prim_queue" in obj:
+            warnings.warn(
+                "DEPRECATED: Detected send_queue/recv_queue; they are ignored when prim_queue is present. "
+                "Please migrate fully to prim_queue and remove legacy fields.",
+                UserWarning,
+            )
+        else:
+            warnings.warn(
+                "DEPRECATED: Using legacy send_queue/recv_queue; auto-converting to prim_queue. "
+                "This path will be removed in the future. Please migrate to prim_queue.",
+                UserWarning,
+            )
+
+    sends_input = obj.get("send_queue", [])
+    sends: list[SendPrim] = []
+    for s_in in sends_input:
+        if not isinstance(s_in, dict):
+            continue
+        s = dict(s_in)
+        msgs = s.get("messages")
+        if isinstance(msgs, list):
+            new_msgs = []
+            for m in msgs:
+                if isinstance(m, dict):
+                    m2 = dict(m)
+                    if  ("cnt" in m2):
+                        try:
+                            m2["cnt"] = max(1, int(m2["cnt"]) + 1)
+                        except Exception:
+                            pass
+                    new_msgs.append(m2)
+            s["messages"] = new_msgs
+            s["message_num"] = len(new_msgs)
+        else:
+            if ("message_num" in s):
+                try:
+                    s["message_num"] = int(s["message_num"]) + 1
+                except Exception:
+                    pass
+        sends.append(SendPrim(**s))
     recvs = [RecvPrim(**r) for r in obj.get("recv_queue", [])]
     q = [PrimOp(kind="send", send=s) for s in sends] + [PrimOp(kind="recv", recv=r) for r in recvs]
     return CoreConfig(init_mem_path=obj.get("init_mem_path"), prim_queue=q)

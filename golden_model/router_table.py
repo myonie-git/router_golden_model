@@ -26,7 +26,7 @@ class RouterTableEntry:
       [11:6]: Y (6b, signed offset in cores)
       [17:12]: X (6b, signed offset in cores)
       [31:18]: A0 (14b; start offset; 8B units for cell mode, 1B for neuron)
-      [43:32]: CNT (12b; pack_per_message for cell-mode, neuron_per_message for neuron-mode)
+      [43:32]: CNT_MINUS1 (12b; store N-1; cell-mode cnt=cells, neuron-mode cnt=bytes)
       [55:44]: A_OFFSET (12b signed; in pack units: 8B for cell, 1B for neuron)
       [62:56]: CONST (7b; group size = CONST+1, with 0 interpreted as 1)
       [63]   : HANDSHAKE (1b)
@@ -50,8 +50,7 @@ class RouterTableEntry:
 
     @property
     def group_size(self) -> int:
-        # CONST=0 -> 1, else CONST+1
-        return 1 if self.const_raw == 0 else (self.const_raw + 1)
+        return self.const_raw + 1
 
     @staticmethod
     def from_packet128(packet: int) -> "RouterTableEntry":
@@ -63,7 +62,8 @@ class RouterTableEntry:
         y = _sign_extend((packet >> 6) & 0x3F, 6)
         x = _sign_extend((packet >> 12) & 0x3F, 6)
         a0 = (packet >> 18) & 0x3FFF
-        cnt = (packet >> 32) & 0xFFF
+        # cnt is stored as N-1 (12b unsigned); decode to actual N
+        cnt = ((packet >> 32) & 0xFFF) + 1
         a_offset = _sign_extend((packet >> 44) & 0xFFF, 12)
         const_raw = (packet >> 56) & 0x7F
         handshake = ((packet >> 63) & 0x1) == 1
@@ -132,7 +132,9 @@ def encode_packet_from_fields(fields: Dict) -> int:
     pkt |= to_twos(fields.get("y", 0), 6) << 6
     pkt |= to_twos(fields.get("x", 0), 6) << 12
     pkt |= (fields.get("a0", 0) & 0x3FFF) << 18
-    pkt |= (fields.get("cnt", 1) & 0xFFF) << 32
+    # cnt is stored as N-1; accept cnt>=1 externally, clamp to [1..4096]
+    cnt_actual = max(1, int(fields.get("cnt", 1)))
+    pkt |= ((cnt_actual - 1) & 0xFFF) << 32
     pkt |= to_twos(fields.get("a_offset", 0), 12) << 44
     pkt |= (fields.get("const_raw", 0) & 0x7F) << 56
     pkt |= (1 if fields.get("handshake", False) else 0) << 63
