@@ -1,4 +1,4 @@
-# Golden Model (Python) for Tianjic Core Array
+# Router Golden Model for NOC
 
 高层 golden model：给定任意规模 Core 阵列、每核初始内存与 Send/Recv 原语序列，模拟路由完成后的“最终内存内容”（以 32B/Cell 为单位），不做时序级包级仿真。
 
@@ -46,3 +46,13 @@ python -m golden_model.runner config/sample_config.json --out_dir out_mem
 - 若提供了 `messages`，无需手工在内存写路由表，runner 会按两条/32B 自动落库到 `para_addr`。
 - `handshake=true` 时，如目的核尚未在队列中更早位置放置匹配 `Recv(tag)`，本模型会先缓存数据，到 `Recv(tag)` 执行时再落库。
 - 目前未实现多播/中继/稀疏压缩实义；需要时可在该基础上扩展。
+
+# Todo List
+
+- [X] Send & Recv的Msg_Num配置修复
+- [X] 添加对End_Num的支持
+- [ ] RecvBuffer的缓冲机制修复
+- [ ] 多播机制实现
+- [ ] 需要添加对Normal和Single Mode的支持
+- [X] 添加对A0，Const，A_offset的支持
+- [] 队列检查
