@@ -211,6 +211,12 @@ def parse_instruction_type2(hex64: str) -> Dict[str, int]:
     for f in FIELDS_TYPE2:
         out[f.name] = _bits(u, f.start, f.width)
 
+    # 有符号修正：A0(14位) 和 A_offset(12位)
+    if "A0" in out:
+        out["A0"] = _to_signed_generic(out["A0"], 14)
+    if "A_offset" in out:
+        out["A_offset"] = _to_signed_generic(out["A_offset"], 12)
+
     return out
 
 def parse_instruction_type3(hex64: str) -> Dict[str, int]:
@@ -237,13 +243,25 @@ def _parse_msg128_from_int(u128: int) -> Dict[str, int]:
     out: Dict[str, int] = {}
     for f in FIELDS_TYPE2:
         out[f.name] = _bits(u128, f.start, f.width)
+    # 有符号修正：A0(14位) 和 A_offset(12位)
+    if "A0" in out:
+        out["A0"] = _to_signed_generic(out["A0"], 14)
+    if "A_offset" in out:
+        out["A_offset"] = _to_signed_generic(out["A_offset"], 12)
     return out
 
 def _pretty_print_type2_dict(parsed: Dict[str, int]) -> None:
     order = [f.name for f in FIELDS_TYPE2]
     for k in order:
         v = parsed.get(k, 0)
-        print(f"{k:25s}: 0x{v:X} ({v})")
+        if k == "A0":
+            u = _unsigned_of_signed(v, 14)
+            print(f"{k:25s}: 0x{u:X} ({v})")
+        elif k == "A_offset":
+            u = _unsigned_of_signed(v, 12)
+            print(f"{k:25s}: 0x{u:X} ({v})")
+        else:
+            print(f"{k:25s}: 0x{v:X} ({v})")
 
 def pretty_print_type2(data: Any) -> None:
     """打印第二种数据格式的解析结果
@@ -305,6 +323,20 @@ def _to_signed_6bit(value: int) -> int:
     if value >= 32:  # 如果最高位为1，表示负数
         return value - 64  # 2^6 = 64
     return value
+
+def _to_signed_generic(value: int, width: int) -> int:
+    """将任意位宽的无符号数转换为有符号值"""
+    mask = (1 << width) - 1
+    value &= mask
+    sign_bit = 1 << (width - 1)
+    if value & sign_bit:
+        return value - (1 << width)
+    return value
+
+def _unsigned_of_signed(value: int, width: int) -> int:
+    """获取有符号值在给定位宽下的无符号表示（位模式）"""
+    mask = (1 << width) - 1
+    return value & mask
 
 def pretty_print_packet(parsed: Dict[str, Any]) -> None:
     """打印第四种数据格式 (新数据包格式) 的解析结果"""
@@ -393,15 +425,15 @@ if __name__ == "__main__":
     res1 = parse_instruction_type1(s1)
     pretty_print_type1(res1)
     
-    # print("=== Recv Prim ===")
-    # s1 = "0000000000002200000000000000000000000000000000000000010000000026"
-    # res1 = parse_instruction_type1(s1)
-    # pretty_print_type1(res1)
+    print("=== Recv Prim ===")
+    s1 = "0000000000040a00000000000000000000000000000000000000200000000026"
+    res1 = parse_instruction_type1(s1)
+    pretty_print_type1(res1)
 
 
-    print("=== Msg===")
-    s1 = "000000000000010b0100100200001000000000000000010a0000100200001000"
-    pretty_print_type2(s1)
+    # print("=== Msg===")
+    # s1 = "000000000000010d00ff900400801000000000000000010c0000500400001000"
+    # pretty_print_type2(s1)
     
     # print("\n=== Packet ===")
     # # # 示例数据（你可以替换为实际的256位十六进制数据）

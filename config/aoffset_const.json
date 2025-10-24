@@ -13,14 +13,14 @@
             "mem_addr": 0,
             "send": {
               "cell_or_neuron": 0,
-              "message_num": 4,
+              "message_num": 3,
               "send_addr": 4096,
               "para_addr": 4352,
               "messages": [
-                { "s": 0, "t": 0, "e": 0, "q": 0, "y": 0, "x": 1, "a0": 0,  "cnt": 2, "a_offset": 1,  "const_raw": 0, "handshake": false, "tag_id": 10, "en": true, "sparse": false },
-                { "s": 0, "t": 0, "e": 0, "q": 0, "y": 0, "x": 1, "a0": 0,  "cnt": 2, "a_offset": 1,  "const_raw": 1, "handshake": false, "tag_id": 11, "en": true, "sparse": false },
-                { "s": 0, "t": 0, "e": 0, "q": 0, "y": 0, "x": 1, "a0": 0,  "cnt": 2, "a_offset": 5,  "const_raw": 0, "handshake": false, "tag_id": 12, "en": true, "sparse": false },
-                { "s": 0, "t": 0, "e": 0, "q": 0, "y": 0, "x": 1, "a0": 32, "cnt": 2, "a_offset": -7, "const_raw": 0, "handshake": false, "tag_id": 13, "en": true, "sparse": false }
+                { "s": 0, "t": 0, "e": 0, "q": 0, "y": 0, "x": 1, "a0": 0,  "cnt": 4, "a_offset": 1,  "const_raw": 0, "handshake": false, "tag_id": 10, "en": true, "sparse": false },
+                { "s": 0, "t": 0, "e": 0, "q": 0, "y": 0, "x": 1, "a0": 0,  "cnt": 4, "a_offset": 1,  "const_raw": 1, "handshake": false, "tag_id": 11, "en": true, "sparse": false },
+                { "s": 0, "t": 0, "e": 0, "q": 0, "y": 0, "x": 1, "a0": 0,  "cnt": 4, "a_offset": 5,  "const_raw": 0, "handshake": false, "tag_id": 12, "en": true, "sparse": false },
+                { "s": 0, "t": 0, "e": 0, "q": 0, "y": 0, "x": 1, "a0": 32, "cnt": 4, "a_offset": -7, "const_raw": 0, "handshake": false, "tag_id": 13, "en": true, "sparse": false }
               ]
             }
           },
@@ -29,7 +29,7 @@
             "mem_addr": 1,
             "send": {
               "cell_or_neuron": 1,
-              "message_num": 4,
+              "message_num": 3,
               "send_addr": 4096,
               "para_addr": 4354,
               "messages": [
@@ -49,14 +49,14 @@
       "config": {
         "init_mem_path": "./input_mem/init.txt",
         "prim_queue": [
-          { "kind": "recv", "mem_addr": 0, "recv": { "recv_addr": 5000, "tag_id": 10 } },
-          { "kind": "recv", "mem_addr": 1, "recv": { "recv_addr": 5020, "tag_id": 11 } },
-          { "kind": "recv", "mem_addr": 2, "recv": { "recv_addr": 5040, "tag_id": 12 } },
-          { "kind": "recv", "mem_addr": 3, "recv": { "recv_addr": 5060, "tag_id": 13 } },
-          { "kind": "recv", "mem_addr": 4, "recv": { "recv_addr": 5200, "tag_id": 14 } },
-          { "kind": "recv", "mem_addr": 5, "recv": { "recv_addr": 5220, "tag_id": 15 } },
-          { "kind": "recv", "mem_addr": 6, "recv": { "recv_addr": 5240, "tag_id": 16 } },
-          { "kind": "recv", "mem_addr": 7, "recv": { "recv_addr": 5260, "tag_id": 17 } }
+          { "kind": "recv", "mem_addr": 0, "recv": { "recv_addr": 8192, "tag_id": 10, "end_num": 0 } },
+          { "kind": "recv", "mem_addr": 1, "recv": { "recv_addr": 8208, "tag_id": 11, "end_num": 0 } },
+          { "kind": "recv", "mem_addr": 2, "recv": { "recv_addr": 8224, "tag_id": 12, "end_num": 0 } },
+          { "kind": "recv", "mem_addr": 3, "recv": { "recv_addr": 8240, "tag_id": 13, "end_num": 0 } },
+          { "kind": "recv", "mem_addr": 4, "recv": { "recv_addr": 8256, "tag_id": 14, "end_num": 0 } },
+          { "kind": "recv", "mem_addr": 5, "recv": { "recv_addr": 8272, "tag_id": 15, "end_num": 0 } },
+          { "kind": "recv", "mem_addr": 6, "recv": { "recv_addr": 8288, "tag_id": 16, "end_num": 0 } },
+          { "kind": "recv", "mem_addr": 7, "recv": { "recv_addr": 8304, "tag_id": 17, "end_num": 0 } }
         ]
       }
     }

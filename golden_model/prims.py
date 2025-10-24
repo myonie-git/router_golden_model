@@ -57,6 +57,8 @@ class RecvPrim:
     CXY: int = 0
     mc_y: int = 0
     mc_x: int = 0
+    # High-level model only: if True, Recv waits until (end_num+1) messages delivered
+    use_end_num: bool = False
 
 
 @dataclass

@@ -35,29 +35,11 @@
 - `prim_queue`：统一原语队列，顺序执行。
   - `{"kind":"send", "send": { ... }} | {"kind":"recv", "recv": { ... }}`
 
-Send 原语：
-- `cell_or_neuron`: 0=Cell(8B)，1=Neuron(1B)
-- `message_num`: Message 数（0 视作 1）。若同时提供 `messages`，以 `messages` 长度为准。
-- `send_addr`: 源 32B 起始地址。
-- `para_addr`: 路由表基地址（每 32B 两条 message）。
-- `messages`: 可选，直接在 JSON 中填写每条 128b message 的字段，runner 会在执行前写入 `para_addr`：
-
-Recv 原语：
-- `recv_addr`：目的 32B 起始地址
-- `tag_id`：本次接收的标签
-- 其余字段（`end_num/relay_mode/mc_x/mc_y`）占位，当前忽略
-
-### A_offset/Const 规则
-- 连续发送时，A 每个包自增 1。
-- 每完成一组（组大小=`const_raw+1`，0 视作 1）后，对“下一包”额外执行 `A += (a_offset - 1)`。
-  - 例：`const_raw=0, a_offset=1` → 紧凑写入（连续）。
-  - 例：`const_raw=0, a_offset=5` → 每包（或每 Cell）之后空 4 个 A 单位（Cell 模式约等于隔一个 32B 行）。
-
 ## 运行
 ```bash
 python -m golden_model.runner config/sample_config.json --out_dir out_mem
 ```
-- 输出：`out_mem/core_Y_X.txt`（`@addr HEX`，全量 dump）。
+- 输出：`out_mem/x_y_mem_config.txt`（`@addr HEX`，全量 dump）。
 - 若使用相对路径，请以仓库根为工作目录运行。
 
 ## 提示

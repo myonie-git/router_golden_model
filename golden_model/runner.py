@@ -1,4 +1,3 @@
-#TODO：Send & Recv的Msg_Num配置需要修复
 #TODO: 缓冲机制的触发是有误的，需要修改
 #TODO: 需要添加多播机制
 #TODO: 需要添加对Normal和Single Mode的支持
@@ -63,7 +62,11 @@ def load_core_config(obj: dict, warn_deprecated: bool = False) -> CoreConfig:
                 send = SendPrim(**s)
             else:
                 send = None
-            recv = RecvPrim(**recv_obj) if isinstance(recv_obj, dict) else None
+            recv = None
+            if isinstance(recv_obj, dict):
+                r = dict(recv_obj)
+                r["use_end_num"] = ("end_num" in r)
+                recv = RecvPrim(**r)
             if send is None and recv is None:
                 raise ValueError("prim_queue entry must specify 'send', 'recv', or 'stop'")
             entry_kind = "send" if send is not None else "recv"

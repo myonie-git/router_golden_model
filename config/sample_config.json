@@ -37,7 +37,7 @@
       "config": {
         "init_mem_path": "./input_mem/init.txt",
         "prim_queue": [
-          { "kind": "recv", "mem_addr" : 0, "recv": { "recv_addr": 4096, "tag_id": 0 } }
+          { "kind": "recv", "mem_addr" : 0, "recv": { "recv_addr": 4096, "tag_id": 0, "end_num": 0 } }
         ]
       }
     }

@@ -20,6 +20,10 @@ class CoreNode:
     prim_queue: List[PrimOp]
     # runtime buffer for unmatched sends (by tag)
     pending_by_tag: Dict[int, List[Tuple[bool, dict, bytes]]]  # (is_cell_mode, rte_fields, payload)
+    # runtime counters of delivered messages per tag
+    delivered_count_by_tag: Dict[int, int] = None
+    # when a Recv with use_end_num is first encountered, remember baseline delivered count
+    recv_baseline_by_idx: Dict[int, Tuple[int, int]] = None  # prim_index -> (tag, baseline)
 
     def load_init_if_any(self, init_path: str | None) -> None:
         if init_path:
@@ -48,13 +52,15 @@ class NoCSimulator:
                     y=y,
                     x=x,
                     mem=CoreMemory(),
-                    prim_queue=[],
+                    prim_queue=[], #原语队列
                     pending_by_tag={},
+                    delivered_count_by_tag={}, #统计每个Tag的消息到达次数
+                    recv_baseline_by_idx={},  #记录每个recv开始运行时候，这个tag被接受的起始次数
                 )
                 node.load_init_if_any(cfg.init_mem_path)
                 # Register node first so seeding helpers can access it via self.cores
                 self.cores[(y, x)] = node
-                # Seed config-provided prims/messages into memory, then parse prim queue from memory
+                # Seed config-provided prims/messages into memory
                 self._seed_config_into_memory((y, x), cfg)
                 node.prim_queue = self._parse_prims_from_memory(node.mem)
 
@@ -139,7 +145,25 @@ class NoCSimulator:
                 else:
                     # Execute recv first (to post acceptors), then send
                     if op.recv is not None:
-                        self._execute_recv(coord, op.recv)
+                        # If Recv has end_num constraint, gate progression until enough msgs arrive
+                        rp = op.recv
+                        if rp.use_end_num:
+                            tag = rp.tag_id
+                            # initialize baseline for this prim index if not yet recorded
+                            if idx not in node.recv_baseline_by_idx:
+                                base = node.delivered_count_by_tag.get(tag, 0)
+                                node.recv_baseline_by_idx[idx] = (tag, base)
+                            else:
+                                base_tag, base = node.recv_baseline_by_idx[idx]
+                                tag = base_tag
+                            # current delivered
+                            cur = node.delivered_count_by_tag.get(tag, 0)
+                            need = (rp.end_num + 1)
+                            if (cur - base) < need:
+                                # not enough messages yet; do not advance this core; try next core
+                                continue
+                        # If enough or no constraint, apply any buffered writes now
+                        self._execute_recv(coord, rp)
                     if op.send is not None:
                         self._prepare_router_msgs_if_needed(coord, op.send)
                         self._execute_send(coord, op.send)
@@ -148,8 +172,7 @@ class NoCSimulator:
                 progressed = True
             if not progressed:
                 break
-    
-
+            
     def _prepare_router_msgs_if_needed(self, src: Tuple[int, int], sp: SendPrim) -> None:
         if sp.messages:
             packets = [encode_packet_from_fields(m) for m in sp.messages]
@@ -236,6 +259,8 @@ class NoCSimulator:
                 # After a group, adjust so that distance (last_8B -> next_first_8B) equals A_offset.
                 # Since 'a' is already last+1, we add (A_offset - 1).
                 a += (rte.a_offset - 1)
+        # one message completed -> increment delivered count at destination for this tag
+        self._increment_delivered(dst_coord, rte.tag_id, 1)
 
     def _send_neuron_mode(self, src_core: CoreNode, dst_coord: Tuple[int, int], sp: SendPrim, rte: RouterTableEntry, msg_idx: int, msg_counts: List[int]) -> None:
         dst_core = self.cores[dst_coord]
@@ -269,6 +294,8 @@ class NoCSimulator:
             sent_count = (neuron_per_message - remaining)
             if (sent_count % group_size) == 0:
                 a += (rte.a_offset - 1)
+        # one message completed -> increment delivered count at destination for this tag
+        self._increment_delivered(dst_coord, rte.tag_id, 1)
 
     # -------------------------- Recv --------------------------
     def _execute_recv(self, dst: Tuple[int, int], rp: RecvPrim) -> None:
@@ -308,6 +335,8 @@ class NoCSimulator:
                     a += 1
                     if ((idx + 1) % group_size) == 0:
                         a += (rte.a_offset - 1)
+            # one buffered message applied -> increment delivered count
+            self._increment_delivered(dst, rte.tag_id, 1)
 
 
 # -------------------------- Small utilities --------------------------
@@ -320,3 +349,14 @@ def dst_core_offset_cell(dst_core: CoreNode, sp: SendPrim, rte: RouterTableEntry
             recv_base = op.recv.recv_addr
             break
     return recv_base + cell_delta
+
+def _safe_inc(d: Dict[int, int], key: int, delta: int = 1) -> None:
+    d[key] = d.get(key, 0) + delta
+
+# Bind helper into class namespace (instance method style)
+def _increment_delivered(self: NoCSimulator, dst_coord: Tuple[int, int], tag: int, count: int = 1) -> None:
+    node = self.cores[dst_coord]
+    _safe_inc(node.delivered_count_by_tag, tag, count)
+
+# Attach method to class
+NoCSimulator._increment_delivered = _increment_delivered
