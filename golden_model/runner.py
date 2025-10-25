@@ -121,7 +121,7 @@ def load_core_config(obj: dict, warn_deprecated: bool = False) -> CoreConfig:
 
 def main():
     ap = argparse.ArgumentParser(description="Golden model runner for Tianjic Core array")
-    ap.add_argument("--config", "-c", type=str, default="config/sample_config.json", help="JSON file describing array and cores")
+    ap.add_argument("--config", "-c", type=str, default="config/aoffset_const.json", help="JSON file describing array and cores")
     ap.add_argument("--out_dir", type=str, default="out_mem", help="Where to write resulting memories")
     ap.add_argument("--emit_seeded_dir", type=str, default=None, help="If set, export seeded (phase-1) memories after writing prims/messages into memory")
     ap.add_argument("--seed_only", action="store_true", help="Only do seeding (phase-1) and export to --emit_seeded_dir, then exit")

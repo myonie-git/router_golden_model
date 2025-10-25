@@ -24,6 +24,8 @@ class CoreNode:
     delivered_count_by_tag: Dict[int, int] = None
     # when a Recv with use_end_num is first encountered, remember baseline delivered count
     recv_baseline_by_idx: Dict[int, Tuple[int, int]] = None  # prim_index -> (tag, baseline)
+    # progress of Send primitive per prim index: next message index to send
+    send_progress_by_idx: Dict[int, int] = None
 
     def load_init_if_any(self, init_path: str | None) -> None:
         if init_path:
@@ -56,6 +58,7 @@ class NoCSimulator:
                     pending_by_tag={},
                     delivered_count_by_tag={}, #统计每个Tag的消息到达次数
                     recv_baseline_by_idx={},  #记录每个recv开始运行时候，这个tag被接受的起始次数
+                    send_progress_by_idx={},
                 )
                 node.load_init_if_any(cfg.init_mem_path)
                 # Register node first so seeding helpers can access it via self.cores
@@ -166,7 +169,10 @@ class NoCSimulator:
                         self._execute_recv(coord, rp)
                     if op.send is not None:
                         self._prepare_router_msgs_if_needed(coord, op.send)
-                        self._execute_send(coord, op.send)
+                        send_done = self._execute_send(coord, op.send, idx)
+                        if not send_done:
+                            # Send 被握手阻塞，不前进该核心的原语索引
+                            continue
                 indices[coord] += 1
                 remaining -= 1
                 progressed = True
@@ -178,28 +184,35 @@ class NoCSimulator:
             packets = [encode_packet_from_fields(m) for m in sp.messages]
             write_router_table_to_memory(self.cores[src].mem, sp.para_addr, packets)
 
-    def _execute_send(self, src: Tuple[int, int], sp: SendPrim) -> None:
+    def _execute_send(self, src: Tuple[int, int], sp: SendPrim, prim_index: int) -> bool:
         src_core = self.cores[src]
         msg_num = sp.message_num
         # Parse router table from source memory
         rtes = parse_router_table_from_memory(src_core.mem, sp.para_addr, msg_num)
         msg_counts = [r.cnt for r in rtes]
-        # Process each message
-        for msg_idx, rte in enumerate(rtes):
+        # 从保存的进度开始顺序发送
+        start_idx = src_core.send_progress_by_idx.get(prim_index, 0)
+        for msg_idx in range(start_idx, len(rtes)):
+            rte = rtes[msg_idx]
             if not rte.en:
                 # Skip data consumption as per spec
+                src_core.send_progress_by_idx[prim_index] = msg_idx + 1
                 continue
             # Resolve destination core (wrap torus-like)
             dst = self._wrap_coord(src_core.y + rte.y, src_core.x + rte.x)
-            # Handshake policy: require that dst has a Recv with matching tag to proceed
+            # 若该消息需要握手且目的端尚无接收者，则阻塞在此条消息
             if rte.handshake and not self._find_recv_acceptor(dst, rte.tag_id):
-                # No acceptor -> buffer at destination until Recv arrives
-                self._buffer_send_payload(src_core, dst, sp, rte, msg_idx, msg_counts)
-                continue
+                return False
             if sp.cell_or_neuron == 0:
                 self._send_cell_mode(src_core, dst, sp, rte, msg_idx, msg_counts)
             else:
                 self._send_neuron_mode(src_core, dst, sp, rte, msg_idx, msg_counts)
+            # 完成一条消息，推进进度
+            src_core.send_progress_by_idx[prim_index] = msg_idx + 1
+        # 所有消息完成，清理进度并返回 True
+        if prim_index in src_core.send_progress_by_idx:
+            del src_core.send_progress_by_idx[prim_index]
+        return True
 
     def _buffer_send_payload(self, src_core: CoreNode, dst_coord: Tuple[int, int], sp: SendPrim, rte: RouterTableEntry, msg_idx: int, msg_counts: List[int]) -> None:
         # Materialize payload bytes as if we would send (for simplicity) and stash by tag at destination.
